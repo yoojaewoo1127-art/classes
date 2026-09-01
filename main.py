@@ -7,6 +7,49 @@ st.set_page_config(
     layout="wide"
 )
 
+# 세련된 그리드 및 카드 스타일 CSS 주입
+st.markdown("""
+<style>
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+        border-bottom: 1.5px solid #e9ecef;
+    }
+    .section-title {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #212529;
+    }
+    .student-badge-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+        margin-top: 6px;
+    }
+    .student-chip {
+        background-color: #f1f3f5;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 5px 8px;
+        font-size: 0.88rem;
+        text-align: center;
+        font-weight: 500;
+        color: #343a40;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .student-chip b {
+        color: #1c7ed6;
+        margin-left: 2px;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 CLASSES_API_URL = "https://sshs.app/api/gyeopgang/classes"
 STUDENTS_API_URL = "https://sshs.app/api/gyeopgang/students"
 
@@ -31,8 +74,7 @@ if error_msg:
     st.stop()
 
 # ----------------- 1. 교번/학번 -> 학생 정보 매핑 -----------------
-# SSHS API 규격: gyobun, hakbun, name
-student_map = {}
+student_info_map = {}
 
 if isinstance(students_raw, list):
     for item in students_raw:
@@ -40,20 +82,24 @@ if isinstance(students_raw, list):
             name = item.get("name", "")
             gyobun = str(item.get("gyobun", "")).strip()
             hakbun = str(item.get("hakbun", "")).strip()
+            
+            s_obj = {
+                "name": name,
+                "hakbun": hakbun,
+                "display": f"{name} ({hakbun})" if hakbun else name
+            }
 
-            # 표시 형식: "홍길동 (1101)" 또는 학번이 없으면 "홍길동"
-            display_str = f"{name} ({hakbun})" if hakbun else name
-
-            # 교번, 학번 둘 다 키로 등록하여 어떤 값으로 들어와도 매핑 가능하게 처리
             if gyobun:
-                student_map[gyobun] = display_str
+                student_info_map[gyobun] = s_obj
             if hakbun:
-                student_map[hakbun] = display_str
+                student_info_map[hakbun] = s_obj
 
-def get_student_name(student_code):
-    """교번을 이름(학번)으로 변환"""
-    code_str = str(student_code).strip()
-    return student_map.get(code_str, code_str)
+def parse_student_entry(code):
+    """교번을 받아 dict 형태로 리턴 (정렬 및 포맷팅용)"""
+    code_str = str(code).strip()
+    if code_str in student_info_map:
+        return student_info_map[code_str]
+    return {"name": code_str, "hakbun": "", "display": code_str}
 
 # ----------------- 2. 수업 데이터 파싱 -----------------
 classes_list = classes_raw if isinstance(classes_raw, list) else []
@@ -86,14 +132,15 @@ for item in classes_list:
     section_name = format_section_name(item)
     raw_students = extract_students(item)
     
-    # 교번 -> 이름(학번) 변환
-    named_students = [get_student_name(s) for s in raw_students]
+    # 교번 -> 학생 객체 변환 및 학번 기준 정렬
+    parsed_students = [parse_student_entry(s) for s in raw_students]
+    parsed_students.sort(key=lambda x: (x["hakbun"] == "", x["hakbun"], x["name"]))
     
     parsed_classes.append({
         "subject": str(subject).strip(),
         "section": section_name,
-        "students": named_students,
-        "count": len(named_students)
+        "students": parsed_students,
+        "count": len(parsed_students)
     })
 
 # 과목별 데이터 그룹화
@@ -112,7 +159,7 @@ if not all_subjects:
     st.warning("표시할 수업 데이터가 없습니다.")
 else:
     subject_options = {
-        f"{sub} (총 {subject_summary[sub]['total_students']}명 / {len(subject_summary[sub]['sections'])}개 분반)": sub
+        f"{sub}  (총 {subject_summary[sub]['total_students']}명 / {len(subject_summary[sub]['sections'])}개 분반)": sub
         for sub in all_subjects
     }
     
@@ -145,11 +192,20 @@ else:
         for idx, sec in enumerate(row_sections):
             with cols[idx]:
                 with st.container(border=True):
-                    st.subheader(f"📌 {sec['section']}")
-                    st.caption(f"수강 인원: **{sec['count']}명**")
-                    st.write("---")
+                    # 분반명 & 수강 인원 헤더
+                    st.markdown(f"""
+                    <div class="section-header">
+                        <span class="section-title">📌 {sec['section']}</span>
+                        <span style="font-size: 0.85rem; color: #6c757d; font-weight: 600;">{sec['count']}명</span>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
+                    # 학생 목록 2열 그리드 출력
                     if sec["students"]:
-                        st.markdown(" • " + " • ".join(sec["students"]))
+                        chips_html = "".join([
+                            f'<div class="student-chip">{s["name"]} {f"<b>({s[\'hakbun\']})</b>" if s["hakbun"] else ""}</div>'
+                            for s in sec["students"]
+                        ])
+                        st.markdown(f'<div class="student-badge-grid">{chips_html}</div>', unsafe_allow_html=True)
                     else:
-                        st.info("배정된 학생이 없습니다.")
+                        st.caption("배정된 학생이 없습니다.")

@@ -7,7 +7,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 세련된 그리드 및 카드 스타일 CSS 주입
+# 세련된 그리드 및 카드 스타일 CSS
 st.markdown("""
 <style>
     .section-header {
@@ -95,7 +95,6 @@ if isinstance(students_raw, list):
                 student_info_map[hakbun] = s_obj
 
 def parse_student_entry(code):
-    """교번을 받아 dict 형태로 리턴 (정렬 및 포맷팅용)"""
     code_str = str(code).strip()
     if code_str in student_info_map:
         return student_info_map[code_str]
@@ -132,7 +131,6 @@ for item in classes_list:
     section_name = format_section_name(item)
     raw_students = extract_students(item)
     
-    # 교번 -> 학생 객체 변환 및 학번 기준 정렬
     parsed_students = [parse_student_entry(s) for s in raw_students]
     parsed_students.sort(key=lambda x: (x["hakbun"] == "", x["hakbun"], x["name"]))
     
@@ -181,7 +179,6 @@ else:
 
     st.divider()
 
-    # 분반별 카드 그리드 (한 줄에 3개씩 배치)
     sections_list = curr_data["sections"]
     cols_per_row = 3
     
@@ -200,12 +197,16 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # 학생 목록 2열 그리드 출력
+                    # 학생 목록 HTML 생성
                     if sec["students"]:
-                        chips_html = "".join([
-                            f'<div class="student-chip">{s["name"]} {f"<b>({s[\'hakbun\']})</b>" if s["hakbun"] else ""}</div>'
-                            for s in sec["students"]
-                        ])
+                        chips_list = []
+                        for s in sec["students"]:
+                            name_val = s["name"]
+                            hakbun_val = s["hakbun"]
+                            hakbun_html = f" <b>({hakbun_val})</b>" if hakbun_val else ""
+                            chips_list.append(f'<div class="student-chip">{name_val}{hakbun_html}</div>')
+                        
+                        chips_html = "".join(chips_list)
                         st.markdown(f'<div class="student-badge-grid">{chips_html}</div>', unsafe_allow_html=True)
                     else:
                         st.caption("배정된 학생이 없습니다.")
